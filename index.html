@@ -2,29 +2,25 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="build-version" content="2026-02-20_UI-V4_FINAL" />
+    <meta name="build-version" content="2026-02-27_UI-V4_FINAL" />
     <title>STOCK IA PRO — Asistente inteligente</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- MANIFEST PWA -->
     <link rel="manifest" href="manifest.json" />
 
-    <!-- ESTILOS PRINCIPALES -->
     <link rel="stylesheet" href="styles_v2.css?v=20260227">
-
-    <!-- ESTILO AISLADO DEL SCANNER -->
     <link rel="stylesheet" href="scanner.css?v=20260223" />
 
     <script>
       console.log(
-        "%cBUILD VERSION: 2026-02-20_UI-V4_FINAL",
+        "%cBUILD VERSION: 2026-02-27_UI-V4_FINAL",
         "color:#4f8cff;font-size:14px;font-weight:bold"
       );
     </script>
   </head>
 
   <body>
-    <div id="build-version" style="display:none">2026-02-20_UI-V4_FINAL</div>
+    <div id="build-version" style="display:none">2026-02-27_UI-V4_FINAL</div>
 
     <div class="app-shell">
       <div class="app-container">
@@ -157,7 +153,7 @@
 
             <div id="metric-alertas-negativos" class="metric-card">
               <div class="metric-label">Stock negativo</div>
-              <div class="metric-value" id="metric-alertas-negativos-value">0</div>
+              <div class="metric-value" id="metric-alertatos-negativos-value">0</div>
             </div>
 
             <div id="metric-alertas-cero" class="metric-card">
@@ -177,7 +173,7 @@
           </div>
 
           <!-- PANEL DE FILTROS -->
-          <div id="filtros-panel" class="filtros-panel">
+          <div id="filtros-panel" class="filtros-panel hidden">
             <div class="filtros-row filtros-row-stack">
               <select id="filtro-marca" class="filtro-select">
                 <option value="">Marca</option>
@@ -206,6 +202,13 @@
 
         <!-- MAIN ROW -->
         <section class="main-row">
+
+          <!-- BOTONES PARA ABRIR/CERRAR PANELES -->
+          <div class="panel-toggles">
+            <button id="btnResultados" class="btn-secondary">Resultados</button>
+            <button id="btnDashboard" class="btn-secondary">Dashboard</button>
+          </div>
+
           <div class="results-card">
             <div class="results-header">
               <div class="results-title">Resultados</div>
@@ -221,11 +224,7 @@
 
             <div id="results-status" class="results-status">Esperando consulta</div>
 
-            <div id="results-container">
-              <div id="vista-tabla" class="vista active"></div>
-              <div id="vista-tarjeta" class="vista"></div>
-              <div id="vista-articulo" class="vista"></div>
-            </div>
+            <div id="results-container"></div>
           </div>
 
           <!-- DASHBOARD -->
@@ -292,7 +291,7 @@
     </div>
 
     <!-- PANEL ADMIN -->
-    <div id="admin-panel" class="hidden">
+    <div id="admin-panel" class="admin-panel hidden">
       <h2 class="admin-title">Panel administrador</h2>
 
       <div class="admin-group">
@@ -381,16 +380,14 @@
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- SCANNER V7 NATIVO -->
     <script src="scanner_v7_barcodeDetector.js?v=20260226"></script>
 
-    <!-- RESTO DE LA APP -->
-    <script src="app_core_v4.js?v=20260220"></script>
-    <script src="ui_engine_v4.js?v=20260220"></script>
-    <script src="orb_engine_v2.js?v=20260220"></script>
-    <script src="orb_admin_engine.js?v=20260220"></script>
-    <script src="dashboard_engine.js?v=20260220"></script>
-    <script src="indicators_engine.js?v=20260220"></script>
+    <script src="app_core_v4.js?v=20260227"></script>
+    <script src="ui_engine_v4.js?v=20260227"></script>
+    <script src="orb_engine_v2.js?v=20260227"></script>
+    <script src="orb_admin_engine.js?v=20260227"></script>
+    <script src="dashboard_engine.js?v=20260227"></script>
+    <script src="indicators_engine.js?v=20260227"></script>
 
     <script>
       window.addEventListener("DOMContentLoaded", () => {
