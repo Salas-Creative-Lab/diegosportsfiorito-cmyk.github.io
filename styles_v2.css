@@ -143,9 +143,7 @@ body.light-mode .result-sub {
 
 .help-overlay,
 .filtros-panel,
-.admin-panel,
-.results-card,
-.dashboard-card {
+.admin-panel {
   display: none !important;
 }
 
@@ -826,7 +824,7 @@ body.light-mode #orb-core.orb-listening {
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
 
-  padding: 10px;
+  padding: 6px 8px;
   text-align: center;
   cursor: pointer;
 
@@ -846,14 +844,14 @@ body.light-mode #orb-core.orb-listening {
 }
 
 .metric-label {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: var(--text-muted);
 }
 
 .metric-value {
-  font-size: 1.1rem;
+  font-size: 0.9rem;
   font-weight: 700;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 /* ============================================================
    IA PRO ULTRA V6 — MÓDULO 5B
