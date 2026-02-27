@@ -1,7 +1,17 @@
 // ============================================================
 // APP CORE — Motor inteligente + warm-up + indicador visual
-// Versión refactorizada premium 2026-02-24 (con fixes AbortError)
+// Versión final corregida 2026-02-27
 // ============================================================
+
+/* ============================================================
+   TOGGLE UNIVERSAL — PARA PANELES (results, dashboard, filtros, admin, ayuda)
+   ============================================================ */
+function toggle(selector) {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  const current = window.getComputedStyle(el).display;
+  el.style.display = current === "none" ? "block" : "none";
+}
 
 const AppCore = {
   // ==========================================================
@@ -27,7 +37,6 @@ const AppCore = {
     filtroTalleDesde: document.getElementById("filtro-talle-desde"),
     filtroTalleHasta: document.getElementById("filtro-talle-hasta"),
 
-    // NUEVO: filtro de unidades
     filtroUnidadesDesde: document.getElementById("filtro-unidades-desde"),
     filtroUnidadesHasta: document.getElementById("filtro-unidades-hasta"),
 
@@ -43,14 +52,10 @@ const AppCore = {
 
     metricArticulos: document.getElementById("metric-articulos-value"),
     metricPares: document.getElementById("metric-pares-value"),
-    metricAlertasNegativos: document.getElementById(
-      "metric-alertas-negativos-value"
-    ),
+    metricAlertasNegativos: document.getElementById("metric-alertas-negativos-value"),
     metricAlertasCero: document.getElementById("metric-alertas-cero-value"),
     metricValorizado: document.getElementById("metric-valorizado-value"),
-    metricUltimaUnidad: document.getElementById(
-      "metric-ultima-unidad-value"
-    ),
+    metricUltimaUnidad: document.getElementById("metric-ultima-unidad-value"),
 
     connectionDot: document.getElementById("connection-dot"),
 
@@ -294,7 +299,6 @@ const AppCore = {
   },
 
   async warmUpLoop() {
-    // FIX: si hay una búsqueda activa, no interferir
     if (this.state.currentAbort) return;
 
     const ok = await this.pingBackend();
@@ -373,716 +377,684 @@ const AppCore = {
         `<option value="">Rubro</option>` +
         [...rubros].sort().map((r) => `<option>${r}</option>`).join("");
   },
-};
-// ============================================================
-// PARSER INTELIGENTE
-// ============================================================
-AppCore.interpretarQuery = function (raw) {
-  const q = this.limpiarInput(raw);
-  const qUpper = this.normalizarTexto(q);
+  },
 
-  const mapMarcas = new Map();
-  const mapRubros = new Map();
+  // ============================================================
+  // PARSER INTELIGENTE
+  // ============================================================
+  interpretarQuery(raw) {
+    const q = this.limpiarInput(raw);
+    const qUpper = this.normalizarTexto(q);
 
-  this.state.catalogItems.forEach((i) => {
-    if (i.marca) mapMarcas.set(this.normalizarTexto(i.marca), i.marca);
-    if (i.rubro) mapRubros.set(this.normalizarTexto(i.rubro), i.rubro);
-  });
+    const mapMarcas = new Map();
+    const mapRubros = new Map();
 
-  const marcasNorm = [...mapMarcas.keys()];
-  const rubrosNorm = [...mapRubros.keys()];
-
-  let marca = null;
-  let rubro = null;
-
-  const tokens = qUpper.split(/\W+/).filter(Boolean);
-
-  for (const m of marcasNorm.sort((a, b) => b.length - a.length)) {
-    if (tokens.includes(m)) marca = mapMarcas.get(m);
-  }
-
-  for (const r of rubrosNorm.sort((a, b) => b.length - a.length)) {
-    if (tokens.includes(r)) rubro = mapRubros.get(r);
-  }
-
-  // RANGO DE TALLES (ej: 38-42, 38 a 42, T38/42)
-  const matchRango = qUpper.match(/T?(\d+)\s*(?:A|-|\/)\s*T?(\d+)/);
-  if (matchRango) {
-    return {
-      filtros_globales: true,
-      marca,
-      rubro,
-      talleDesde: parseInt(matchRango[1]),
-      talleHasta: parseInt(matchRango[2]),
-      soloUltimo: false,
-      soloNegativo: false,
-      question: "",
-    };
-  }
-
-  // TALLE ÚNICO (ej: 40, T40)
-  const matchTalle = qUpper.match(/^T?(\d{1,3})$/);
-  if (matchTalle) {
-    const t = parseInt(matchTalle[1]);
-    return {
-      filtros_globales: true,
-      marca,
-      rubro,
-      talleDesde: t,
-      talleHasta: t,
-      soloUltimo: false,
-      soloNegativo: false,
-      question: "",
-    };
-  }
-
-  // PRECIO (ej: $50000, P50000)
-  const matchPrecio = qUpper.match(/^(?:P|\$)?(\d{2,6})$/);
-  if (matchPrecio) {
-    return {
-      filtros_globales: false,
-      marca: null,
-      rubro: null,
-      talleDesde: null,
-      talleHasta: null,
-      soloUltimo: false,
-      soloNegativo: false,
-      question: matchPrecio[1],
-    };
-  }
-
-  // CÓDIGO numérico largo (ej: 12345678)
-  if (/^\d[\d\- ]{6,14}\d$/.test(qUpper)) {
-    return {
-      filtros_globales: false,
-      marca: null,
-      rubro: null,
-      talleDesde: null,
-      talleHasta: null,
-      soloUltimo: false,
-      soloNegativo: false,
-      question: qUpper.replace(/[\s\-]/g, ""),
-    };
-  }
-
-  // ÚLTIMO / NEGATIVO
-  const esUltimo = /\bULTIM[OA]S?\b/.test(qUpper);
-  const esNegativo = /\bNEGATIV[OA]S?\b/.test(qUpper);
-
-  if (esUltimo || esNegativo) {
-    return {
-      filtros_globales: true,
-      marca,
-      rubro,
-      talleDesde: null,
-      talleHasta: null,
-      soloUltimo: esUltimo,
-      soloNegativo: esNegativo,
-      question: "",
-    };
-  }
-
-  // MARCA / RUBRO EXACTOS
-  const qNorm = this.normalizarTexto(q);
-  const esMarcaExacta = marcasNorm.includes(qNorm);
-  const esRubroExacto = rubrosNorm.includes(qNorm);
-
-  let usarFiltros = esMarcaExacta || esRubroExacto;
-
-  if (!usarFiltros && tokens.length === 1 && marcasNorm.length) {
-    const marcaCorregida = this.corregirMarcaPorVoz?.(qNorm, mapMarcas);
-    if (marcaCorregida) {
-      marca = marcaCorregida;
-      usarFiltros = true;
-    }
-  }
-
-  return {
-    filtros_globales: usarFiltros,
-    marca: usarFiltros ? marca : null,
-    rubro: usarFiltros ? rubro : null,
-    talleDesde: null,
-    talleHasta: null,
-    soloUltimo: false,
-    soloNegativo: false,
-    question: usarFiltros ? "" : q,
-  };
-};
-
-// ============================================================
-// BÚSQUEDA PRINCIPAL (FIX AbortError)
-// ============================================================
-AppCore.buscar = async function () {
-  const raw = this.els.searchInput?.value || "";
-  const q = this.limpiarInput(raw);
-
-  if (!q) {
-    this.limpiarPantalla();
-    return;
-  }
-
-  this.state.lastQuery = q;
-
-  const parsed = this.interpretarQuery(q);
-
-  const body = {
-    question: parsed.question || "",
-    filtros_globales: !!parsed.filtros_globales,
-    marca: parsed.marca || null,
-    rubro: parsed.rubro || null,
-    talleDesde: parsed.talleDesde || null,
-    talleHasta: parsed.talleHasta || null,
-    soloUltimo: parsed.soloUltimo || false,
-    soloNegativo: parsed.soloNegativo || false,
-    solo_stock: this.els.chkSoloStock?.checked || false,
-  };
-
-  if (this.state.currentAbort) this.state.currentAbort.abort();
-  this.state.currentAbort = new AbortController();
-
-  this.setSearchStatus("Buscando…", "blue");
-  ORB.setError?.(false);
-  ORB.setLoading?.(true);
-
-  if (this.els.resultsStatus)
-    this.els.resultsStatus.textContent = "Buscando…";
-
-  try {
-    const res = await fetch(this.config.backendUrl + "/query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: this.state.currentAbort.signal,
+    this.state.catalogItems.forEach((i) => {
+      if (i.marca) mapMarcas.set(this.normalizarTexto(i.marca), i.marca);
+      if (i.rubro) mapRubros.set(this.normalizarTexto(i.rubro), i.rubro);
     });
 
-    if (!res.ok) throw new Error();
+    const marcasNorm = [...mapMarcas.keys()];
+    const rubrosNorm = [...mapRubros.keys()];
 
-    const data = await res.json();
-    this.state.items = data.items || [];
+    let marca = null;
+    let rubro = null;
 
-    this.renderResultados(this.state.items);
-    window.actualizarDashboard?.(this.state.items);
-    this.actualizarIndicadores(this.state.items);
+    const tokens = qUpper.split(/\W+/).filter(Boolean);
 
-    this.setConnectionStatus(true);
-    this.setOrbIdle();
-    this.setSearchStatus("Conectado", "green");
-
-    if (this.els.resultsStatus)
-      this.els.resultsStatus.textContent = `${this.state.items.length} resultados`;
-
-    if (window.ORB?.isVoiceMode?.()) {
-      this.speakResultados();
+    for (const m of marcasNorm.sort((a, b) => b.length - a.length)) {
+      if (tokens.includes(m)) marca = mapMarcas.get(m);
     }
-  } catch (err) {
-    if (err.name === "AbortError") {
-      // No mostrar error: es un aborto normal por nueva búsqueda / warm-up
+
+    for (const r of rubrosNorm.sort((a, b) => b.length - a.length)) {
+      if (tokens.includes(r)) rubro = mapRubros.get(r);
+    }
+
+    // RANGO DE TALLES (ej: 38-42, 38 a 42, T38/42)
+    const matchRango = qUpper.match(/T?(\d+)\s*(?:A|-|\/)\s*T?(\d+)/);
+    if (matchRango) {
+      return {
+        filtros_globales: true,
+        marca,
+        rubro,
+        talleDesde: parseInt(matchRango[1]),
+        talleHasta: parseInt(matchRango[2]),
+        soloUltimo: false,
+        soloNegativo: false,
+        question: "",
+      };
+    }
+
+    // TALLE ÚNICO (ej: 40, T40)
+    const matchTalle = qUpper.match(/^T?(\d{1,3})$/);
+    if (matchTalle) {
+      const t = parseInt(matchTalle[1]);
+      return {
+        filtros_globales: true,
+        marca,
+        rubro,
+        talleDesde: t,
+        talleHasta: t,
+        soloUltimo: false,
+        soloNegativo: false,
+        question: "",
+      };
+    }
+
+    // PRECIO (ej: $50000, P50000)
+    const matchPrecio = qUpper.match(/^(?:P|\$)?(\d{2,6})$/);
+    if (matchPrecio) {
+      return {
+        filtros_globales: false,
+        marca: null,
+        rubro: null,
+        talleDesde: null,
+        talleHasta: null,
+        soloUltimo: false,
+        soloNegativo: false,
+        question: matchPrecio[1],
+      };
+    }
+
+    // CÓDIGO numérico largo (ej: 12345678)
+    if (/^\d[\d\- ]{6,14}\d$/.test(qUpper)) {
+      return {
+        filtros_globales: false,
+        marca: null,
+        rubro: null,
+        talleDesde: null,
+        talleHasta: null,
+        soloUltimo: false,
+        soloNegativo: false,
+        question: qUpper.replace(/[\s\-]/g, ""),
+      };
+    }
+
+    // ÚLTIMO / NEGATIVO
+    const esUltimo = /\bULTIM[OA]S?\b/.test(qUpper);
+    const esNegativo = /\bNEGATIV[OA]S?\b/.test(qUpper);
+
+    if (esUltimo || esNegativo) {
+      return {
+        filtros_globales: true,
+        marca,
+        rubro,
+        talleDesde: null,
+        talleHasta: null,
+        soloUltimo: esUltimo,
+        soloNegativo: esNegativo,
+        question: "",
+      };
+    }
+
+    // MARCA / RUBRO EXACTOS
+    const qNorm = this.normalizarTexto(q);
+    const esMarcaExacta = marcasNorm.includes(qNorm);
+    const esRubroExacto = rubrosNorm.includes(qNorm);
+
+    let usarFiltros = esMarcaExacta || esRubroExacto;
+
+    if (!usarFiltros && tokens.length === 1 && marcasNorm.length) {
+      const marcaCorregida = this.corregirMarcaPorVoz?.(qNorm, mapMarcas);
+      if (marcaCorregida) {
+        marca = marcaCorregida;
+        usarFiltros = true;
+      }
+    }
+
+    return {
+      filtros_globales: usarFiltros,
+      marca: usarFiltros ? marca : null,
+      rubro: usarFiltros ? rubro : null,
+      talleDesde: null,
+      talleHasta: null,
+      soloUltimo: false,
+      soloNegativo: false,
+      question: usarFiltros ? "" : q,
+    };
+  },
+
+  // ============================================================
+  // BÚSQUEDA PRINCIPAL (FIX AbortError)
+  // ============================================================
+  async buscar() {
+    const raw = this.els.searchInput?.value || "";
+    const q = this.limpiarInput(raw);
+
+    if (!q) {
+      this.limpiarPantalla();
       return;
     }
 
-    this.setConnectionStatus(false);
-    ORB.setError?.(true);
+    this.state.lastQuery = q;
 
-    this.setSearchStatus("Error de conexión", "red");
+    const parsed = this.interpretarQuery(q);
+
+    const body = {
+      question: parsed.question || "",
+      filtros_globales: !!parsed.filtros_globales,
+      marca: parsed.marca || null,
+      rubro: parsed.rubro || null,
+      talleDesde: parsed.talleDesde || null,
+      talleHasta: parsed.talleHasta || null,
+      soloUltimo: parsed.soloUltimo || false,
+      soloNegativo: parsed.soloNegativo || false,
+      solo_stock: this.els.chkSoloStock?.checked || false,
+    };
+
+    if (this.state.currentAbort) this.state.currentAbort.abort();
+    this.state.currentAbort = new AbortController();
+
+    this.setSearchStatus("Buscando…", "blue");
+    ORB.setError?.(false);
+    ORB.setLoading?.(true);
+
     if (this.els.resultsStatus)
-      this.els.resultsStatus.textContent = "Error de conexión";
+      this.els.resultsStatus.textContent = "Buscando…";
 
-    clearTimeout(this.state.retryTimeout);
-    this.state.retryTimeout = setTimeout(() => this.warmUpLoop(), 2000);
-  } finally {
-    ORB.setLoading?.(false);
-  }
-};
+    try {
+      const res = await fetch(this.config.backendUrl + "/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: this.state.currentAbort.signal,
+      });
 
-// ============================================================
-// BÚSQUEDA POR FILTROS (incluye unidades + FIX AbortError)
-// ============================================================
-AppCore.actualizarFiltrosDesdeUI = function () {
-  this.state.filtros.marca = this.els.filtroMarca?.value || null;
-  this.state.filtros.rubro = this.els.filtroRubro?.value || null;
-  this.state.filtros.talleDesde = this.els.filtroTalleDesde?.value || null;
-  this.state.filtros.talleHasta = this.els.filtroTalleHasta?.value || null;
+      if (!res.ok) throw new Error();
 
-  this.state.filtros.unidadesDesde =
-    this.els.filtroUnidadesDesde?.value || null;
-  this.state.filtros.unidadesHasta =
-    this.els.filtroUnidadesHasta?.value || null;
-};
+      const data = await res.json();
+      this.state.items = data.items || [];
 
-AppCore.filtrarPorUnidadesLocal = function (items) {
-  const desdeRaw = this.state.filtros.unidadesDesde;
-  const hastaRaw = this.state.filtros.unidadesHasta;
+      this.renderResultados(this.state.items);
+      window.actualizarDashboard?.(this.state.items);
+      this.actualizarIndicadores(this.state.items);
 
-  if (!desdeRaw && !hastaRaw) return items;
+      this.setConnectionStatus(true);
+      this.setOrbIdle();
+      this.setSearchStatus("Conectado", "green");
 
-  const desde = desdeRaw ? parseInt(desdeRaw, 10) : null;
-  const hasta = hastaRaw ? parseInt(hastaRaw, 10) : null;
+      if (this.els.resultsStatus)
+        this.els.resultsStatus.textContent = `${this.state.items.length} resultados`;
 
-  if (!desde && !hasta) return items;
+      if (window.ORB?.isVoiceMode?.()) {
+        this.speakResultados();
+      }
+    } catch (err) {
+      if (err.name === "AbortError") return;
 
-  return (items || []).filter((it) => {
-    const total = (it.talles || []).reduce(
-      (acc, t) => acc + Number(t.stock || 0),
+      this.setConnectionStatus(false);
+      ORB.setError?.(true);
+
+      this.setSearchStatus("Error de conexión", "red");
+      if (this.els.resultsStatus)
+        this.els.resultsStatus.textContent = "Error de conexión";
+
+      clearTimeout(this.state.retryTimeout);
+      this.state.retryTimeout = setTimeout(() => this.warmUpLoop(), 2000);
+    } finally {
+      ORB.setLoading?.(false);
+    }
+  },
+
+  // ============================================================
+  // BÚSQUEDA POR FILTROS (incluye unidades + FIX AbortError)
+  // ============================================================
+  actualizarFiltrosDesdeUI() {
+    this.state.filtros.marca = this.els.filtroMarca?.value || null;
+    this.state.filtros.rubro = this.els.filtroRubro?.value || null;
+    this.state.filtros.talleDesde = this.els.filtroTalleDesde?.value || null;
+    this.state.filtros.talleHasta = this.els.filtroTalleHasta?.value || null;
+
+    this.state.filtros.unidadesDesde =
+      this.els.filtroUnidadesDesde?.value || null;
+    this.state.filtros.unidadesHasta =
+      this.els.filtroUnidadesHasta?.value || null;
+  },
+
+  filtrarPorUnidadesLocal(items) {
+    const desdeRaw = this.state.filtros.unidadesDesde;
+    const hastaRaw = this.state.filtros.unidadesHasta;
+
+    if (!desdeRaw && !hastaRaw) return items;
+
+    const desde = desdeRaw ? parseInt(desdeRaw, 10) : null;
+    const hasta = hastaRaw ? parseInt(hastaRaw, 10) : null;
+
+    if (!desde && !hasta) return items;
+
+    return (items || []).filter((it) => {
+      const total = (it.talles || []).reduce(
+        (acc, t) => acc + Number(t.stock || 0),
+        0
+      );
+
+      if (desde !== null && total < desde) return false;
+      if (hasta !== null && total > hasta) return false;
+      return true;
+    });
+  },
+
+  async buscarPorFiltros() {
+    this.actualizarFiltrosDesdeUI();
+
+    const body = {
+      question: "",
+      filtros_globales: true,
+      marca: this.state.filtros.marca || null,
+      rubro: this.state.filtros.rubro || null,
+      talleDesde: this.state.filtros.talleDesde
+        ? parseInt(this.state.filtros.talleDesde)
+        : null,
+      talleHasta: this.state.filtros.talleHasta
+        ? parseInt(this.state.filtros.talleHasta)
+        : null,
+      soloUltimo: false,
+      soloNegativo: false,
+      solo_stock: this.els.chkSoloStock?.checked || false,
+
+      unidadesDesde: this.state.filtros.unidadesDesde
+        ? parseInt(this.state.filtros.unidadesDesde)
+        : null,
+      unidadesHasta: this.state.filtros.unidadesHasta
+        ? parseInt(this.state.filtros.unidadesHasta)
+        : null,
+    };
+
+    if (this.state.currentAbort) this.state.currentAbort.abort();
+    this.state.currentAbort = new AbortController();
+
+    this.setSearchStatus("Buscando…", "blue");
+    ORB.setLoading?.(true);
+
+    if (this.els.resultsStatus)
+      this.els.resultsStatus.textContent = "Buscando…";
+
+    try {
+      const res = await fetch(this.config.backendUrl + "/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: this.state.currentAbort.signal,
+      });
+
+      if (!res.ok) throw new Error();
+
+      let items = (await res.json()).items || [];
+
+      items = this.filtrarPorUnidadesLocal(items);
+
+      this.state.items = items;
+
+      this.renderResultados(items);
+      window.actualizarDashboard?.(items);
+      this.actualizarIndicadores(items);
+
+      this.setConnectionStatus(true);
+      this.setOrbIdle();
+      this.setSearchStatus("Conectado", "green");
+
+      if (this.els.resultsStatus)
+        this.els.resultsStatus.textContent = `${items.length} resultados`;
+    } catch (err) {
+      if (err.name === "AbortError") return;
+
+      this.setConnectionStatus(false);
+      ORB.setError?.(true);
+      this.setSearchStatus("Error de conexión", "red");
+
+      if (this.els.resultsStatus)
+        this.els.resultsStatus.textContent = "Error de conexión";
+    } finally {
+      ORB.setLoading?.(false);
+    }
+  },
+  },
+
+  // ============================================================
+  // RENDER DE RESULTADOS
+  // ============================================================
+  renderResultados(items) {
+    if (!this.els.resultsContainer) return;
+
+    this.els.resultsContainer.innerHTML = "";
+
+    if (!items || !items.length) {
+      this.els.resultsContainer.innerHTML =
+        `<div class="result-item">Sin resultados</div>`;
+      return;
+    }
+
+    if (this.state.vistaActual === "tabla") {
+      this.renderTabla(items);
+      return;
+    }
+
+    if (this.state.vistaActual === "articulo") {
+      this.renderArticulo(items[0]);
+      return;
+    }
+
+    // Vista tarjeta (default)
+    items.forEach((item) => {
+      const div = document.createElement("div");
+      div.className = "result-item";
+      div.innerHTML = `
+        <div class="result-title">${item.descripcion || "—"}</div>
+        <div class="result-sub">${item.marca || "—"} — ${item.rubro || "—"}</div>
+      `;
+      div.addEventListener("click", () => {
+        this.state.vistaActual = "articulo";
+        this.renderResultados([item]);
+      });
+      this.els.resultsContainer.appendChild(div);
+    });
+  },
+
+  // ============================================================
+  // RENDER TABLA
+  // ============================================================
+  renderTabla(items) {
+    if (!this.els.resultsContainer) return;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "tabla-wrapper";
+
+    const table = document.createElement("table");
+    table.className = "tabla-resultados";
+
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Descripción</th>
+          <th>Marca</th>
+          <th>Rubro</th>
+          <th>Stock</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items
+          .map((it) => {
+            const total = (it.talles || []).reduce(
+              (acc, t) => acc + Number(t.stock || 0),
+              0
+            );
+            return `
+              <tr>
+                <td>${it.codigo}</td>
+                <td>${it.descripcion}</td>
+                <td>${it.marca}</td>
+                <td>${it.rubro}</td>
+                <td>${total}</td>
+              </tr>
+            `;
+          })
+          .join("")}
+      </tbody>
+    `;
+
+    wrapper.appendChild(table);
+    this.els.resultsContainer.appendChild(wrapper);
+  },
+
+  // ============================================================
+  // RENDER ARTÍCULO (DETALLE)
+  // ============================================================
+  renderArticulo(item) {
+    if (!item || !this.els.resultsContainer) return;
+
+    this.els.resultsContainer.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "detalle-card";
+
+    card.innerHTML = `
+      <div class="detalle-title">${item.descripcion || "—"}</div>
+      <div class="detalle-sub">${item.marca || "—"} — ${item.rubro || "—"}</div>
+
+      <div class="detalle-section-title">Talles</div>
+      <div class="detalle-talles">
+        ${(item.talles || [])
+          .map((t) => `Talle ${t.talle}: ${t.stock}`)
+          .join("<br>")}
+      </div>
+
+      <button class="btn-copy">Copiar</button>
+    `;
+
+    card.querySelector(".btn-copy").addEventListener("click", () => {
+      this.copiarResultados();
+    });
+
+    this.els.resultsContainer.appendChild(card);
+  },
+
+  // ============================================================
+  // INDICADORES SUPERIORES
+  // ============================================================
+  actualizarIndicadores(items) {
+    if (!items) items = [];
+
+    const totalArt = items.length;
+    const totalPares = items.reduce(
+      (acc, it) =>
+        acc +
+        (it.talles || []).reduce((a, t) => a + Number(t.stock || 0), 0),
       0
     );
 
-    if (desde !== null && total < desde) return false;
-    if (hasta !== null && total > hasta) return false;
-    return true;
-  });
-};
+    const negativos = items.filter((it) => {
+      const sum = (it.talles || []).reduce(
+        (a, t) => a + Number(t.stock || 0),
+        0
+      );
+      return sum < 0;
+    }).length;
 
-AppCore.buscarPorFiltros = async function () {
-  this.actualizarFiltrosDesdeUI();
+    const cero = items.filter((it) => {
+      const sum = (it.talles || []).reduce(
+        (a, t) => a + Number(t.stock || 0),
+        0
+      );
+      return sum === 0;
+    }).length;
 
-  const body = {
-    question: "",
-    filtros_globales: true,
-    marca: this.state.filtros.marca || null,
-    rubro: this.state.filtros.rubro || null,
-    talleDesde: this.state.filtros.talleDesde
-      ? parseInt(this.state.filtros.talleDesde)
-      : null,
-    talleHasta: this.state.filtros.talleHasta
-      ? parseInt(this.state.filtros.talleHasta)
-      : null,
-    soloUltimo: false,
-    soloNegativo: false,
-    solo_stock: this.els.chkSoloStock?.checked || false,
-
-    // Se envían por si el backend los soporta (no rompe si los ignora)
-    unidadesDesde: this.state.filtros.unidadesDesde
-      ? parseInt(this.state.filtros.unidadesDesde)
-      : null,
-    unidadesHasta: this.state.filtros.unidadesHasta
-      ? parseInt(this.state.filtros.unidadesHasta)
-      : null,
-  };
-
-  if (this.state.currentAbort) this.state.currentAbort.abort();
-  this.state.currentAbort = new AbortController();
-
-  this.setSearchStatus("Buscando…", "blue");
-  ORB.setLoading?.(true);
-
-  if (this.els.resultsStatus)
-    this.els.resultsStatus.textContent = "Buscando…";
-
-  try {
-    const res = await fetch(this.config.backendUrl + "/query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: this.state.currentAbort.signal,
-    });
-
-    if (!res.ok) throw new Error();
-
-    let items = (await res.json()).items || [];
-
-    // Filtro de unidades aplicado SIEMPRE en frontend
-    items = this.filtrarPorUnidadesLocal(items);
-
-    this.state.items = items;
-
-    this.renderResultados(items);
-    window.actualizarDashboard?.(items);
-    this.actualizarIndicadores(items);
-
-    this.setConnectionStatus(true);
-    this.setOrbIdle();
-    this.setSearchStatus("Conectado", "green");
-
-    if (this.els.resultsStatus)
-      this.els.resultsStatus.textContent = `${items.length} resultados`;
-  } catch (err) {
-    if (err.name === "AbortError") {
-      // No mostrar error: es un aborto normal
-      return;
-    }
-
-    this.setConnectionStatus(false);
-    ORB.setError?.(true);
-    this.setSearchStatus("Error de conexión", "red");
-
-    if (this.els.resultsStatus)
-      this.els.resultsStatus.textContent = "Error de conexión";
-  } finally {
-    ORB.setLoading?.(false);
-  }
-};
-// ============================================================
-// RENDER RESULTADOS (3 VISTAS)
-// ============================================================
-AppCore.renderResultados = function (items) {
-  const vTabla = this.els.vistaTabla;
-  const vTarjeta = this.els.vistaTarjeta;
-  const vArticulo = this.els.vistaArticulo;
-
-  if (!vTabla || !vTarjeta || !vArticulo) return;
-
-  if (!items || !items.length) {
-    const emptyHtml = '<div class="results-empty">Sin resultados.</div>';
-    vTabla.innerHTML = emptyHtml;
-    vTarjeta.innerHTML = emptyHtml;
-    vArticulo.innerHTML = emptyHtml;
-    return;
-  }
-
-  this.renderVistaTabla(items);
-  this.renderVistaTarjeta(items);
-  this.renderVistaArticulo(items);
-};
-
-// ============================================================
-// VISTA TABLA (scroll horizontal + filas compactas)
-// ============================================================
-AppCore.renderVistaTabla = function (items) {
-  const container = this.els.vistaTabla;
-  if (!container) return;
-
-  let html = `
-    <div class="tabla-wrapper" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-      <table class="tabla-resultados">
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Descripción</th>
-            <th>Marca</th>
-            <th>Rubro</th>
-            <th>Color</th>
-            <th>Precio</th>
-            <th>Talles</th>
-            <th>Valorizado</th>
-          </tr>
-        </thead>
-        <tbody>
- `;
-
-  items.forEach((item) => {
-    const talles = (item.talles || [])
-      .map((t) => `${this.normalizarCampo(t.talle)}: ${t.stock}`)
-      .join(" | ");
-
-    html += `
-      <tr>
-        <td>${this.normalizarCampo(item.codigo)}</td>
-        <td>${this.normalizarCampo(item.descripcion)}</td>
-        <td>${this.normalizarCampo(item.marca)}</td>
-        <td>${this.normalizarCampo(item.rubro)}</td>
-        <td>${this.normalizarCampo(item.color)}</td>
-        <td>$${this.formatNumber(item.precio)}</td>
-        <td>${talles}</td>
-        <td>$${this.formatNumber(item.valorizado)}</td>
-      </tr>
-    `;
-  });
-
-  html += "</tbody></table></div>";
-  container.innerHTML = html;
-};
-
-// ============================================================
-// VISTA TARJETA
-// ============================================================
-AppCore.renderVistaTarjeta = function (items) {
-  const container = this.els.vistaTarjeta;
-  if (!container) return;
-
-  container.innerHTML = "";
-
-  items.forEach((item) => {
-    const div = document.createElement("div");
-    div.className = "result-item";
-
-    const talles = (item.talles || [])
-      .map((t) => `${this.normalizarCampo(t.talle)}: ${t.stock}`)
-      .join(" | ");
-
-    div.innerHTML = `
-      <div class="result-title">
-        ${this.normalizarCampo(item.codigo)} — ${this.normalizarCampo(
-      item.descripcion
-    )}
-      </div>
-
-      <div class="result-sub">
-        Marca: ${this.normalizarCampo(item.marca)} |
-        Rubro: ${this.normalizarCampo(item.rubro)} |
-        Color: ${this.normalizarCampo(item.color)}
-      </div>
-
-      <div class="result-precio">Precio: $${this.formatNumber(
-        item.precio
-      )}</div>
-      <div class="result-talles">${talles}</div>
-
-      <div class="result-sub">
-        Valorizado: $${this.formatNumber(item.valorizado)}
-      </div>
-    `;
-
-    container.appendChild(div);
-  });
-};
-
-// ============================================================
-// VISTA ARTÍCULO (DETALLE)
-// ============================================================
-AppCore.renderVistaArticulo = function (items) {
-  const container = this.els.vistaArticulo;
-  if (!container) return;
-
-  if (!items.length) {
-    container.innerHTML = '<div class="results-empty">Sin resultados.</div>';
-    return;
-  }
-
-  let html = "";
-
-  items.forEach((base) => {
-    const talles = base.talles || [];
-
-    if (!talles.length) {
-      html += `
-        <div class="detalle-header">
-          <h2>${this.normalizarCampo(base.codigo)} — ${this.normalizarCampo(
-        base.descripcion
-      )}</h2>
-          <p>${this.normalizarCampo(base.marca)} / ${this.normalizarCampo(
-        base.rubro
-      )}</p>
-        </div>
-
-        <div class="results-empty">Este artículo no tiene talles detallados.</div>
-        <hr style="opacity:0.25;margin:14px 0;">
-      `;
-      return;
-    }
-
-    const rowsHtml = talles
-      .map((t) => {
-        const stock = Number(t.stock || 0);
-        const precio = Number(base.precio || 0);
-        const total = stock * precio;
-
-        return `
-          <tr>
-            <td>${this.normalizarCampo(t.talle)}</td>
-            <td>${stock}</td>
-            <td>$${this.formatNumber(precio)}</td>
-            <td>$${this.formatNumber(total)}</td>
-          </tr>
-        `;
-      })
-      .join("");
-
-    const totalGeneral = talles.reduce((acc, t) => {
-      const stock = Number(t.stock || 0);
-      const precio = Number(base.precio || 0);
-      return acc + stock * precio;
+    const valorizado = items.reduce((acc, it) => {
+      return acc + Number(it.precio || 0);
     }, 0);
 
-    html += `
-      <div class="detalle-header">
-        <h2>${this.normalizarCampo(base.codigo)} — ${this.normalizarCampo(
-      base.descripcion
-    )}</h2>
-        <p>${this.normalizarCampo(base.marca)} / ${this.normalizarCampo(
-      base.rubro
-    )}</p>
-      </div>
+    if (this.els.metricArticulos)
+      this.els.metricArticulos.textContent = totalArt;
 
-      <table class="tabla-talles">
-        <thead>
-          <tr>
-            <th>Talle</th>
-            <th>Cantidad</th>
-            <th>Precio</th>
-            <th>Total</th>
-          </tr>
-        </thead>
+    if (this.els.metricPares)
+      this.els.metricPares.textContent = totalPares;
 
-        <tbody>
-          ${rowsHtml}
+    if (this.els.metricAlertasNegativos)
+      this.els.metricAlertasNegativos.textContent = negativos;
 
-          <tr>
-            <td colspan="3" style="text-align:right;font-weight:bold;">Total general</td>
-            <td>$${this.formatNumber(totalGeneral)}</td>
-          </tr>
-        </tbody>
-      </table>
+    if (this.els.metricAlertasCero)
+      this.els.metricAlertasCero.textContent = cero;
 
-      <hr style="opacity:0.25;margin:14px 0;">
-    `;
-  });
+    if (this.els.metricValorizado)
+      this.els.metricValorizado.textContent =
+        "$" + this.formatNumber(valorizado);
+  },
 
-  container.innerHTML = html;
-};
+  // ============================================================
+  // COPIAR RESULTADOS
+  // ============================================================
+  copiarResultados() {
+    if (!this.state.items.length) {
+      this.showToast("No hay resultados para copiar");
+      return;
+    }
 
-// ============================================================
-// INDICADORES / MÉTRICAS
-// ============================================================
-AppCore.actualizarIndicadores = function (items) {
-  const arr = items || [];
-
-  const articulos = arr.length;
-
-  let pares = 0;
-  let stockNegativo = 0;
-  let sinStock = 0;
-  let ultimaUnidad = 0;
-  let valorizadoTotal = 0;
-
-  arr.forEach((item) => {
-    let stockItem = 0;
-
-    (item.talles || []).forEach((t) => {
-      const s = Number(t.stock || 0);
-      stockItem += s;
-      if (s < 0) stockNegativo += 1;
+    let txt = "";
+    this.state.items.forEach((item) => {
+      txt += `${item.codigo} — ${item.descripcion} — ${item.marca} — ${item.rubro}\n`;
+      (item.talles || []).forEach((t) => {
+        txt += `  Talle ${t.talle}: ${t.stock}\n`;
+      });
+      txt += "\n";
     });
 
-    if (stockItem === 0) sinStock += 1;
-    if (stockItem === 1) ultimaUnidad += 1;
-    if (item.valorizado) valorizadoTotal += Number(item.valorizado || 0);
-    if (stockItem > 0) pares += stockItem;
-  });
+    navigator.clipboard.writeText(txt);
+    this.showToast("Copiado");
+  },
 
-  if (this.els.metricArticulos)
-    this.els.metricArticulos.textContent = this.formatNumber(articulos);
+  // ============================================================
+  // STOP TODO
+  // ============================================================
+  stopTodo() {
+    if (this.state.currentAbort) this.state.currentAbort.abort();
 
-  if (this.els.metricPares)
-    this.els.metricPares.textContent = this.formatNumber(pares);
+    try {
+      speechSynthesis.cancel();
+    } catch (_) {}
 
-  if (this.els.metricAlertasNegativos)
-    this.els.metricAlertasNegativos.textContent =
-      this.formatNumber(stockNegativo);
+    ORB.setError?.(false);
+    ORB.setLoading?.(false);
+    this.setSearchStatus("Listo", "blue");
+  },
 
-  if (this.els.metricAlertasCero)
-    this.els.metricAlertasCero.textContent = this.formatNumber(sinStock);
+  // ============================================================
+  // VOZ — LECTURA DE RESULTADOS
+  // ============================================================
+  speakResultados() {
+    if (!("speechSynthesis" in window)) return;
+    if (!this.state.items.length) return;
 
-  if (this.els.metricValorizado)
-    this.els.metricValorizado.textContent =
-      "$" + this.formatNumber(valorizadoTotal);
+    const top = this.state.items.slice(0, 5);
+    let text = "Resultados de stock. ";
 
-  if (this.els.metricUltimaUnidad)
-    this.els.metricUltimaUnidad.textContent =
-      this.formatNumber(ultimaUnidad);
-};
-// ============================================================
-// COPIAR RESULTADOS
-// ============================================================
-AppCore.copiarResultados = function () {
-  if (!this.state.items.length) {
-    this.showToast("No hay resultados para copiar");
-    return;
-  }
-
-  let txt = "";
-  this.state.items.forEach((item) => {
-    txt += `${item.codigo} — ${item.descripcion} — ${item.marca} — ${item.rubro}\n`;
-    (item.talles || []).forEach((t) => {
-      txt += `  Talle ${t.talle}: ${t.stock}\n`;
+    top.forEach((item) => {
+      text += `${item.descripcion || "Artículo"} de marca ${
+        item.marca || "sin marca"
+      }, rubro ${item.rubro || "sin rubro"}. `;
     });
-    txt += "\n";
-  });
 
-  navigator.clipboard.writeText(txt);
-  this.showToast("Copiado");
+    try {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = "es-AR";
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utter);
+    } catch (_) {}
+  },
+
+  // ============================================================
+  // LIMPIAR PANTALLA
+  // ============================================================
+  limpiarPantalla() {
+    this.state.items = [];
+
+    this.renderResultados([]);
+    window.actualizarDashboard?.([]);
+    this.actualizarIndicadores([]);
+
+    if (this.els.resultsStatus)
+      this.els.resultsStatus.textContent = "Sin resultados";
+
+    if (this.els.searchInput) this.els.searchInput.value = "";
+
+    this.setOrbIdle();
+    this.setSearchStatus("Listo", "blue");
+  },
+  },
+
+  // ============================================================
+  // EVENTOS DE UI
+  // ============================================================
+  conectarEventosUI() {
+    // Aplicar filtros
+    this.els.btnAplicarFiltros?.addEventListener("click", () => {
+      this.buscarPorFiltros();
+    });
+
+    // Enter en búsqueda
+    this.els.searchInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this.buscar();
+    });
+
+    // Copiar
+    document.getElementById("btn-copiar")?.addEventListener("click", () =>
+      this.copiarResultados()
+    );
+
+    // Limpiar
+    document.getElementById("btn-limpiar")?.addEventListener("click", () =>
+      this.limpiarPantalla()
+    );
+
+    // Stop
+    document.getElementById("btn-stop")?.addEventListener("click", () =>
+      this.stopTodo()
+    );
+
+    // ============================================================
+    // TOGGLES DE PANELES
+    // ============================================================
+
+    // Ayuda
+    const helpOverlay = document.querySelector(".help-overlay");
+    const helpClose = document.querySelector(".help-close");
+
+    document.querySelector(".btn-help")?.addEventListener("click", () => {
+      if (helpOverlay) helpOverlay.style.display = "flex";
+    });
+
+    helpClose?.addEventListener("click", () => {
+      if (helpOverlay) helpOverlay.style.display = "none";
+    });
+
+    // Filtros avanzados
+    document.getElementById("btnFiltros")?.addEventListener("click", () => {
+      toggle("#filtros-panel");
+    });
+
+    // Results-card
+    document.getElementById("btnResultados")?.addEventListener("click", () => {
+      toggle(".results-card");
+    });
+
+    // Dashboard-card
+    document.getElementById("btnDashboard")?.addEventListener("click", () => {
+      toggle(".dashboard-card");
+    });
+
+    // Panel Admin — condición ADMIN
+    const adminPanel = document.querySelector(".admin-panel");
+    this.els.searchInput?.addEventListener("input", (e) => {
+      if (!adminPanel) return;
+      if (e.target.value.trim().toUpperCase() === "ADMIN") {
+        adminPanel.style.display = "block";
+      }
+    });
+
+    // Panel Admin — 7 clics al ORB
+    let orbClicks = 0;
+    const orbCore = document.getElementById("orb-core");
+    orbCore?.addEventListener("click", () => {
+      if (!adminPanel) return;
+      orbClicks++;
+      if (orbClicks >= 7) {
+        adminPanel.style.display = "block";
+        orbClicks = 0;
+      }
+    });
+  },
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  init() {
+    this.setSearchStatus("Activando servidor…", "orange");
+    this.warmUpLoop();
+    this.conectarEventosUI();
+  },
 };
 
 // ============================================================
-// STOP TODO
-// ============================================================
-AppCore.stopTodo = function () {
-  if (this.state.currentAbort) this.state.currentAbort.abort();
-
-  try {
-    speechSynthesis.cancel();
-  } catch (_) {}
-
-  ORB.setError?.(false);
-  ORB.setLoading?.(false);
-  this.setSearchStatus("Listo", "blue");
-};
-
-// ============================================================
-// VOZ — LECTURA DE RESULTADOS
-// ============================================================
-AppCore.speakResultados = function () {
-  if (!("speechSynthesis" in window)) return;
-  if (!this.state.items.length) return;
-
-  const top = this.state.items.slice(0, 5);
-  let text = "Resultados de stock. ";
-
-  top.forEach((item) => {
-    text += `${item.descripcion || "Artículo"} de marca ${
-      item.marca || "sin marca"
-    }, rubro ${item.rubro || "sin rubro"}. `;
-  });
-
-  try {
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "es-AR";
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utter);
-  } catch (_) {}
-};
-
-// ============================================================
-// LIMPIAR PANTALLA
-// ============================================================
-AppCore.limpiarPantalla = function () {
-  this.state.items = [];
-
-  this.renderResultados([]);
-  window.actualizarDashboard?.([]);
-  this.actualizarIndicadores([]);
-
-  if (this.els.resultsStatus)
-    this.els.resultsStatus.textContent = "Sin resultados";
-
-  if (this.els.searchInput) this.els.searchInput.value = "";
-
-  this.setOrbIdle();
-  this.setSearchStatus("Listo", "blue");
-};
-
-// ============================================================
-// EVENTOS DE UI (mínimos desde AppCore)
-// ============================================================
-AppCore.conectarEventosUI = function () {
-  this.els.btnAplicarFiltros?.addEventListener("click", () => {
-    this.buscarPorFiltros();
-  });
-
-  this.els.searchInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") this.buscar();
-  });
-
-  const btnCopiar = document.getElementById("btn-copiar");
-  btnCopiar?.addEventListener("click", () => this.copiarResultados());
-
-  const btnLimpiar = document.getElementById("btn-limpiar");
-  btnLimpiar?.addEventListener("click", () => this.limpiarPantalla());
-
-  const btnStop = document.getElementById("btn-stop");
-  btnStop?.addEventListener("click", () => this.stopTodo());
-};
-
-// ============================================================
-// INIT
-// ============================================================
-AppCore.init = function () {
-  this.setSearchStatus("Activando servidor…", "orange");
-  this.warmUpLoop();
-  this.conectarEventosUI();
-};
-
-// ============================================================
-// BADGE DE VERSIÓN (para footer)
+// BADGE DE VERSIÓN
 // ============================================================
 function inicializarBadgeVersion() {
   const badge = document.getElementById("version-badge");
@@ -1106,9 +1078,8 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ============================================================
-   SISTEMA DE ACTUALIZACIÓN — Opción 2 (Optimizado)
+   SISTEMA DE ACTUALIZACIÓN — Optimizado
    ============================================================ */
-
 function inicializarSistemaActualizacion() {
   if (!("serviceWorker" in navigator)) return;
 
